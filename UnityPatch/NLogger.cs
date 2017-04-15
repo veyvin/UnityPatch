@@ -1,70 +1,65 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace UnityPatch
 {
     public class NLogger
     {
-        private static List<NLogger.Message> _msgs = new List<NLogger.Message>();
+        private static readonly List<Message> _msgs = new List<Message>();
         public static short MaxMessages = 8;
-        private static short _errorState = 0;
+        private static short _errorState;
 
         public static void Clear()
         {
-            NLogger._msgs.Clear();
-            NLogger._errorState = (short)0;
+            _msgs.Clear();
+            _errorState = 0;
         }
 
         public static void LastXMessages()
         {
-            if (NLogger._msgs.Count < 1)
+            if (_msgs.Count < 1)
                 return;
-            StringBuilder stringBuilder = new StringBuilder();
-            int count = NLogger._msgs.Count;
-            if (count > (int)NLogger.MaxMessages)
-            {
-                for (int index = count - (int)NLogger.MaxMessages; index < count; ++index)
-                    stringBuilder.Append(NLogger._msgs[index].message).AppendLine();
-            }
+            var stringBuilder = new StringBuilder();
+            var count = _msgs.Count;
+            if (count > MaxMessages)
+                for (var index = count - MaxMessages; index < count; ++index)
+                    stringBuilder.Append(_msgs[index].message).AppendLine();
             else
-            {
-                foreach (NLogger.Message msg in NLogger._msgs)
+                foreach (var msg in _msgs)
                     stringBuilder.Append(msg.message).AppendLine();
-            }
-            NLogger.Publish(new NLogger.Message(stringBuilder.ToString(), NLogger._errorState));
+            Publish(new Message(stringBuilder.ToString(), _errorState));
         }
 
         public static void LastMessage()
         {
-            if (NLogger._msgs.Count < 1)
+            if (_msgs.Count < 1)
                 return;
-            NLogger.Publish(NLogger._msgs[NLogger._msgs.Count - 1]);
+            Publish(_msgs[_msgs.Count - 1]);
         }
 
         public static void WriteLogToFile(string filename)
         {
-            if (NLogger._msgs.Count < 1)
+            if (_msgs.Count < 1)
                 return;
             try
             {
-                File.WriteAllText(filename, NLogger.GetFullLog(true));
+                File.WriteAllText(filename, GetFullLog(true));
             }
             catch (Exception ex)
             {
-                int num = (int)MessageBox.Show("IOException: Can't write log to file: " + ex.Message, "Patcher", MessageBoxButtons.OK, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+                var num = (int) MessageBox.Show("IOException: Can't write log to file: " + ex.Message, "Patcher",
+                    MessageBoxButtons.OK, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
             }
         }
 
         public static string GetFullLog(bool header = false)
         {
-            if (NLogger._msgs.Count < 1)
-                return (string)null;
-            StringBuilder stringBuilder = new StringBuilder();
+            if (_msgs.Count < 1)
+                return null;
+            var stringBuilder = new StringBuilder();
             if (header)
             {
                 stringBuilder.Append("Patcher log file.").AppendLine();
@@ -74,87 +69,84 @@ namespace UnityPatch
                 stringBuilder.Append("2 = Exclamation,").AppendLine();
                 stringBuilder.Append("3 = Error").AppendLine();
             }
-            foreach (NLogger.Message msg in NLogger._msgs)
-                stringBuilder.Append(string.Format("{{0}} {{1}},", (object)msg.Level, (object)msg.message));
+            foreach (var msg in _msgs)
+                stringBuilder.Append(string.Format("{{0}} {{1}},", msg.Level, msg.message));
             return stringBuilder.ToString();
         }
 
-        private static void Publish(NLogger.Message md)
+        private static void Publish(Message md)
         {
             if (md == null)
                 return;
             switch (md.state)
             {
-                case NLogger.Message.State.Debug:
-                    int num1 = (int)MessageBox.Show(md.message, "Patcher");
+                case Message.State.Debug:
+                    var num1 = (int) MessageBox.Show(md.message, "Patcher");
                     break;
-                case NLogger.Message.State.Information:
-                    int num2 = (int)MessageBox.Show(md.message, "Patcher", MessageBoxButtons.OK, MessageBoxIcon.Asterisk, MessageBoxDefaultButton.Button1);
+                case Message.State.Information:
+                    var num2 = (int) MessageBox.Show(md.message, "Patcher", MessageBoxButtons.OK,
+                        MessageBoxIcon.Asterisk, MessageBoxDefaultButton.Button1);
                     break;
-                case NLogger.Message.State.Exclamation:
-                    int num3 = (int)MessageBox.Show(md.message, "Patcher", MessageBoxButtons.OK, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+                case Message.State.Exclamation:
+                    var num3 = (int) MessageBox.Show(md.message, "Patcher", MessageBoxButtons.OK,
+                        MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
                     break;
-                case NLogger.Message.State.Error:
-                    int num4 = (int)MessageBox.Show(md.message, "Patcher", MessageBoxButtons.OK, MessageBoxIcon.Hand, MessageBoxDefaultButton.Button1);
+                case Message.State.Error:
+                    var num4 = (int) MessageBox.Show(md.message, "Patcher", MessageBoxButtons.OK, MessageBoxIcon.Hand,
+                        MessageBoxDefaultButton.Button1);
                     break;
             }
         }
 
         internal static void Debug(string ms)
         {
-            NLogger._msgs.Add(new NLogger.Message(ms, (short)0));
+            _msgs.Add(new Message(ms, 0));
         }
 
         internal static void Inf(string ms)
         {
-            NLogger._msgs.Add(new NLogger.Message(ms, (short)1));
-            if ((int)NLogger._errorState >= 1)
+            _msgs.Add(new Message(ms, 1));
+            if (_errorState >= 1)
                 return;
-            NLogger._errorState = (short)1;
+            _errorState = 1;
         }
 
         internal static void Warn(string ms)
         {
-            NLogger._msgs.Add(new NLogger.Message(ms, (short)2));
-            if ((int)NLogger._errorState >= 2)
+            _msgs.Add(new Message(ms, 2));
+            if (_errorState >= 2)
                 return;
-            NLogger._errorState = (short)2;
+            _errorState = 2;
         }
 
         internal static void Error(string ms)
         {
-            NLogger._msgs.Add(new NLogger.Message(ms, (short)3));
-            if ((int)NLogger._errorState >= 3)
+            _msgs.Add(new Message(ms, 3));
+            if (_errorState >= 3)
                 return;
-            NLogger._errorState = (short)3;
+            _errorState = 3;
         }
 
         private class Message
         {
-            public readonly string message;
-            public readonly NLogger.Message.State state;
-
-            public int Level
-            {
-                get
-                {
-                    return (int)this.state;
-                }
-            }
-
-            public Message(string ms, short st = 0)
-            {
-                this.message = ms;
-                this.state = (NLogger.Message.State)st;
-            }
-
             public enum State
             {
                 Debug,
                 Information,
                 Exclamation,
-                Error,
+                Error
             }
+
+            public readonly string message;
+            public readonly State state;
+
+            public Message(string ms, short st = 0)
+            {
+                message = ms;
+                state = (State) st;
+            }
+
+            public int Level => (int) state;
         }
     }
 }

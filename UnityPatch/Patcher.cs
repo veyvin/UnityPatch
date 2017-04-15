@@ -2,92 +2,89 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace UnityPatch
 {
     public class Patcher : IDisposable
     {
         private int _bufferSize = 2048;
-        private string[] _succesMessages = new string[5]
-        {
-      "Pattern not found!!",
-      "Patched!!",
-      "Patched but result is other!!",
-      "Found!!",
-      "Found but result is other!!"
-        };
-        public string FileName;
         private FileStream _fs;
         private bool _isDisposed;
 
-        public Patcher.PatcherState CurrentState { get; private set; }
+        private string[] _succesMessages = new string[5]
+        {
+            "Pattern not found!!",
+            "Patched!!",
+            "Patched but result is other!!",
+            "Found!!",
+            "Found but result is other!!"
+        };
+
+        public string FileName;
+
+        public Patcher()
+        {
+            Patterns = new List<Pattern>();
+        }
+
+        public Patcher(string filename)
+        {
+            Patterns = new List<Pattern>();
+            FileName = filename;
+        }
+
+        public Patcher(string filename, List<Pattern> patterns)
+        {
+            if (Patterns == null)
+                throw new ArgumentNullException("patterns.");
+            if (Patterns.Count == 0)
+                throw new ArgumentOutOfRangeException("Collection is empty: patterns.");
+            Patterns = patterns;
+            FileName = filename;
+        }
+
+        public PatcherState CurrentState { get; private set; }
 
         public string[] SuccesMessages
         {
-            get
-            {
-                return this._succesMessages;
-            }
+            get => _succesMessages;
             set
             {
                 if (value == null || value.Length != 5)
                     return;
-                this._succesMessages = value;
+                _succesMessages = value;
             }
         }
 
         public int BufferSize
         {
-            get
-            {
-                return this._bufferSize;
-            }
-            set
-            {
-                this._bufferSize = value < 16 ? 16 : value;
-            }
+            get => _bufferSize;
+            set => _bufferSize = value < 16 ? 16 : value;
         }
 
-        public List<Patcher.Pattern> Patterns { get; }
+        public List<Pattern> Patterns { get; }
 
-        public Patcher()
+        public void Dispose()
         {
-            this.Patterns = new List<Patcher.Pattern>();
-        }
-
-        public Patcher(string filename)
-        {
-            this.Patterns = new List<Patcher.Pattern>();
-            this.FileName = filename;
-        }
-
-        public Patcher(string filename, List<Patcher.Pattern> patterns)
-        {
-            if (this.Patterns == null)
-                throw new ArgumentNullException("patterns.");
-            if (this.Patterns.Count == 0)
-                throw new ArgumentOutOfRangeException("Collection is empty: patterns.");
-            this.Patterns = patterns;
-            this.FileName = filename;
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         ~Patcher()
         {
-            this.Dispose(false);
+            Dispose(false);
         }
 
         public bool AddString(string se, string rep, uint brakAfter = 1, uint replaceAfter = 0)
         {
             try
             {
-                this.Patterns.Add(new Patcher.Pattern(se, rep, brakAfter, replaceAfter));
+                Patterns.Add(new Pattern(se, rep, brakAfter, replaceAfter));
             }
             catch (Exception ex)
             {
-                NLogger.Warn(string.Format("AddString: {0}: {1}", (object)ex.GetType(), (object)ex.Message));
+                NLogger.Warn(string.Format("AddString: {0}: {1}", ex.GetType(), ex.Message));
                 return false;
             }
             return true;
@@ -95,29 +92,29 @@ namespace UnityPatch
 
         public bool Patch()
         {
-            if (this.Patterns == null)
+            if (Patterns == null)
             {
                 NLogger.Error("ArgumentNullException: patterns.");
                 return false;
             }
-            this.Patterns.RemoveAll((Predicate<Patcher.Pattern>)(item => item == null));
-            if (this.Patterns.Count == 0)
+            Patterns.RemoveAll(item => item == null);
+            if (Patterns.Count == 0)
             {
                 NLogger.Error("Collection is empty: patterns.");
                 return false;
             }
             uint fail = 0;
             uint good = 0;
-            bool fileHasChanged = false;
+            var fileHasChanged = false;
             try
             {
-                this._fs = this.CreateStream(this.FileName);
-                foreach (Patcher.Pattern pattern in this.Patterns)
+                _fs = CreateStream(FileName);
+                foreach (var pattern in Patterns)
                 {
-                    Patcher.MainPattern allPatterns = this.FindAllPatterns(pattern);
+                    var allPatterns = FindAllPatterns(pattern);
                     if (allPatterns.SuccessfullyFound > 0)
                     {
-                        if (this.ReplaceAllPatterns(allPatterns))
+                        if (ReplaceAllPatterns(allPatterns))
                             fileHasChanged = true;
                         if (allPatterns.Success)
                         {
@@ -130,90 +127,92 @@ namespace UnityPatch
                         }
                     }
                     else
+                    {
                         ++fail;
+                    }
                 }
             }
             catch (Exception ex)
             {
-                if (this._fs != null)
+                if (_fs != null)
                 {
-                    this._fs.Dispose();
-                    this._fs = (FileStream)null;
+                    _fs.Dispose();
+                    _fs = null;
                 }
-                NLogger.Error(string.Format("{0}: {1}", (object)ex.GetType(), (object)ex.Message));
+                NLogger.Error(string.Format("{0}: {1}", ex.GetType(), ex.Message));
                 return false;
             }
-            if (this._fs != null)
+            if (_fs != null)
             {
-                this._fs.Close();
-                this._fs = (FileStream)null;
+                _fs.Close();
+                _fs = null;
             }
             if (fileHasChanged)
             {
                 if (fail > 0U && good > 0U)
                 {
-                    NLogger.Debug(this._succesMessages[2]);
-                    this.CurrentState = new Patcher.PatcherState(fileHasChanged, good, fail, this._succesMessages[2]);
+                    NLogger.Debug(_succesMessages[2]);
+                    CurrentState = new PatcherState(fileHasChanged, good, fail, _succesMessages[2]);
                     return true;
                 }
-                if ((int)fail == 0 && good > 0U)
+                if ((int) fail == 0 && good > 0U)
                 {
-                    NLogger.Debug(this._succesMessages[1]);
-                    this.CurrentState = new Patcher.PatcherState(fileHasChanged, good, fail, this._succesMessages[1]);
+                    NLogger.Debug(_succesMessages[1]);
+                    CurrentState = new PatcherState(fileHasChanged, good, fail, _succesMessages[1]);
                     return true;
                 }
-                this.CurrentState = new Patcher.PatcherState(fileHasChanged, good, fail, this._succesMessages[0]);
-                NLogger.Debug(this._succesMessages[0]);
+                CurrentState = new PatcherState(fileHasChanged, good, fail, _succesMessages[0]);
+                NLogger.Debug(_succesMessages[0]);
             }
             else
             {
                 if (fail > 0U && good > 0U)
                 {
-                    this.CurrentState = new Patcher.PatcherState(fileHasChanged, good, fail, this._succesMessages[4]);
-                    NLogger.Debug(this._succesMessages[4]);
+                    CurrentState = new PatcherState(fileHasChanged, good, fail, _succesMessages[4]);
+                    NLogger.Debug(_succesMessages[4]);
                     return true;
                 }
-                if ((int)fail == 0 && good > 0U)
+                if ((int) fail == 0 && good > 0U)
                 {
-                    this.CurrentState = new Patcher.PatcherState(fileHasChanged, good, fail, this._succesMessages[3]);
-                    NLogger.Debug(this._succesMessages[3]);
+                    CurrentState = new PatcherState(fileHasChanged, good, fail, _succesMessages[3]);
+                    NLogger.Debug(_succesMessages[3]);
                     return true;
                 }
-                this.CurrentState = new Patcher.PatcherState(fileHasChanged, good, fail, this._succesMessages[0]);
-                NLogger.Debug(this._succesMessages[0]);
+                CurrentState = new PatcherState(fileHasChanged, good, fail, _succesMessages[0]);
+                NLogger.Debug(_succesMessages[0]);
             }
             return false;
         }
 
-        private Patcher.MainPattern FindAllPatterns(Patcher.Pattern pt)
+        private MainPattern FindAllPatterns(Pattern pt)
         {
-            if (this._isDisposed)
+            if (_isDisposed)
                 throw new ObjectDisposedException("Object was disposed.");
             if (pt == null)
                 throw new ArgumentNullException("Pattern");
             if (!pt.ValidPattern)
-                return new Patcher.MainPattern(pt, (long[])null);
+                return new MainPattern(pt, null);
             long num1 = 0;
-            int num2 = 0;
-            int index1 = 0;
+            var num2 = 0;
+            var index1 = 0;
             uint num3 = 0;
             uint num4 = 0;
-            byte[] buffer = new byte[this._bufferSize];
-            int num5 = this._bufferSize;
-            Patcher.Pattern.UniversalByte[] searchBytes = pt.SearchBytes;
-            List<long> longList = new List<long>();
-            if (this._isDisposed)
+            var buffer = new byte[_bufferSize];
+            var num5 = _bufferSize;
+            var searchBytes = pt.SearchBytes;
+            var longList = new List<long>();
+            if (_isDisposed)
                 throw new ObjectDisposedException("Object was disposed.");
-            this._fs.Position = 0L;
+            _fs.Position = 0L;
             while (num5 > 0)
             {
-                if (this._isDisposed)
+                if (_isDisposed)
                     throw new ObjectDisposedException("Object was disposed.");
-                long position = this._fs.Position;
-                num5 = this._fs.Read(buffer, 0, buffer.Length);
-                for (int index2 = 0; index2 < num5; ++index2)
-                {
-                    if (searchBytes[index1].Act == Patcher.Pattern.UniversalByte.Action.Skip || (int)buffer[index2] == (int)searchBytes[index1].B)
+                var position = _fs.Position;
+                num5 = _fs.Read(buffer, 0, buffer.Length);
+                for (var index2 = 0; index2 < num5; ++index2)
+                    if (searchBytes[index1].Act == Pattern.UniversalByte.Action.Skip ||
+                        buffer[index2] == searchBytes[index1].B)
                     {
                         if (index1 == 0)
                         {
@@ -223,18 +222,22 @@ namespace UnityPatch
                         if (searchBytes.Length - 1 == index1)
                         {
                             index1 = 0;
-                            if ((int)num3 == (int)pt.ReplaceAfter)
+                            if ((int) num3 == (int) pt.ReplaceAfter)
                             {
                                 ++num4;
-                                longList.Add(num1 + (long)num2);
-                                if (pt.BrakAfter > 0U && (int)num4 == (int)pt.BrakAfter)
-                                    return new Patcher.MainPattern(pt, longList.ToArray());
+                                longList.Add(num1 + num2);
+                                if (pt.BrakAfter > 0U && (int) num4 == (int) pt.BrakAfter)
+                                    return new MainPattern(pt, longList.ToArray());
                             }
                             else
+                            {
                                 ++num3;
+                            }
                         }
                         else
+                        {
                             ++index1;
+                        }
                     }
                     else if (index1 > 0)
                     {
@@ -242,44 +245,42 @@ namespace UnityPatch
                         index2 = num2;
                         if (num1 != position)
                         {
-                            this._fs.Position = num1;
-                            num5 = this._fs.Read(buffer, 0, buffer.Length);
+                            _fs.Position = num1;
+                            num5 = _fs.Read(buffer, 0, buffer.Length);
                         }
                     }
-                }
             }
             if (num4 <= 0U)
-                return new Patcher.MainPattern(pt, (long[])null);
-            return new Patcher.MainPattern(pt, longList.ToArray());
+                return new MainPattern(pt, null);
+            return new MainPattern(pt, longList.ToArray());
         }
 
-        private bool ReplaceAllPatterns(Patcher.MainPattern pt)
+        private bool ReplaceAllPatterns(MainPattern pt)
         {
-            if (!pt.Ptrn.ReplaceImmediately || this._isDisposed)
+            if (!pt.Ptrn.ReplaceImmediately || _isDisposed)
                 return false;
-            int num1 = 0;
-            long[] streamPosition = pt.StreamPosition;
-            Patcher.Pattern.UniversalByte[] replaceBytes = pt.Ptrn.ReplaceBytes;
-            byte[] buffer = new byte[pt.Ptrn.SearchBytes.Length];
-            foreach (long num2 in streamPosition)
+            var num1 = 0;
+            var streamPosition = pt.StreamPosition;
+            var replaceBytes = pt.Ptrn.ReplaceBytes;
+            var buffer = new byte[pt.Ptrn.SearchBytes.Length];
+            foreach (var num2 in streamPosition)
             {
-                if (this._isDisposed)
+                if (_isDisposed)
                     return false;
-                bool flag = false;
-                this._fs.Position = num2;
-                this._fs.Read(buffer, 0, buffer.Length);
-                for (int index = 0; index < buffer.Length; ++index)
-                {
-                    if (replaceBytes[index].Act > Patcher.Pattern.UniversalByte.Action.Skip && (int)buffer[index] != (int)replaceBytes[index].B)
+                var flag = false;
+                _fs.Position = num2;
+                _fs.Read(buffer, 0, buffer.Length);
+                for (var index = 0; index < buffer.Length; ++index)
+                    if (replaceBytes[index].Act > Pattern.UniversalByte.Action.Skip &&
+                        buffer[index] != replaceBytes[index].B)
                     {
                         buffer[index] = replaceBytes[index].B;
                         flag = true;
                     }
-                }
                 if (flag)
                 {
-                    this._fs.Position = num2;
-                    this._fs.Write(buffer, 0, buffer.Length);
+                    _fs.Position = num2;
+                    _fs.Write(buffer, 0, buffer.Length);
                     ++num1;
                 }
             }
@@ -289,9 +290,9 @@ namespace UnityPatch
         private FileStream CreateStream(string fileName)
         {
             File.GetAttributes(fileName);
-            FileAttributes fileAttributes = FileAttributes.Normal;
+            var fileAttributes = FileAttributes.Normal;
             File.SetAttributes(fileName, fileAttributes);
-            FileStream fileStream = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
+            var fileStream = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
             if (fileStream.Length < 16L)
             {
                 fileStream.Close();
@@ -300,20 +301,14 @@ namespace UnityPatch
             return fileStream;
         }
 
-        public void Dispose()
-        {
-            this.Dispose(true);
-            GC.SuppressFinalize((object)this);
-        }
-
         protected virtual void Dispose(bool disposing)
         {
-            if (this._isDisposed)
+            if (_isDisposed)
                 return;
-            if (disposing && this._fs != null)
-                this._fs.Dispose();
-            this._fs = (FileStream)null;
-            this._isDisposed = true;
+            if (disposing && _fs != null)
+                _fs.Dispose();
+            _fs = null;
+            _isDisposed = true;
         }
 
         public class PatcherState
@@ -325,25 +320,25 @@ namespace UnityPatch
 
             public PatcherState(bool fileHasChanged, uint good, uint fail, string stringState = "")
             {
-                this.FileHasChanged = fileHasChanged;
-                this.Good = good;
-                this.Fail = fail;
-                this.StringState = stringState;
+                FileHasChanged = fileHasChanged;
+                Good = good;
+                Fail = fail;
+                StringState = stringState;
             }
         }
 
         public struct MainPattern
         {
-            public readonly Patcher.Pattern Ptrn;
+            public readonly Pattern Ptrn;
             public readonly long[] StreamPosition;
 
             public int SuccessfullyFound
             {
                 get
                 {
-                    if (this.StreamPosition == null)
+                    if (StreamPosition == null)
                         return 0;
-                    return this.StreamPosition.Length;
+                    return StreamPosition.Length;
                 }
             }
 
@@ -351,89 +346,87 @@ namespace UnityPatch
             {
                 get
                 {
-                    if (this.StreamPosition == null)
+                    if (StreamPosition == null)
                         return false;
-                    if (this.Ptrn.BrakAfter < 1U && this.StreamPosition.Length != 0)
+                    if (Ptrn.BrakAfter < 1U && StreamPosition.Length != 0)
                         return true;
-                    return (long)(this.Ptrn.BrakAfter - this.Ptrn.ReplaceAfter) == (long)this.StreamPosition.Length;
+                    return Ptrn.BrakAfter - Ptrn.ReplaceAfter == StreamPosition.Length;
                 }
             }
 
-            public MainPattern(Patcher.Pattern ptrn, long[] streamPosition)
+            public MainPattern(Pattern ptrn, long[] streamPosition)
             {
                 if (ptrn == null)
                     throw new ArgumentNullException("Pattern.");
-                this.Ptrn = ptrn;
-                this.StreamPosition = streamPosition;
+                Ptrn = ptrn;
+                StreamPosition = streamPosition;
             }
         }
 
         public class Pattern
         {
-            public readonly Patcher.Pattern.UniversalByte[] ReplaceBytes;
-            public readonly Patcher.Pattern.UniversalByte[] SearchBytes;
             private readonly bool _valid;
+            public readonly UniversalByte[] ReplaceBytes;
+            public readonly UniversalByte[] SearchBytes;
             public uint BrakAfter;
             public uint ReplaceAfter;
-
-            public bool ValidPattern
-            {
-                get
-                {
-                    if (this.BrakAfter > 0U && this.BrakAfter - this.ReplaceAfter < 1U)
-                        return false;
-                    return this._valid;
-                }
-            }
-
-            public bool ReplaceImmediately { get; }
 
             public Pattern(string se, string rep, uint brakAfter = 1, uint replaceAfter = 0)
             {
                 if (string.IsNullOrEmpty(se))
                     throw new ArgumentException("Input string null or empty.");
-                this.BrakAfter = brakAfter;
-                this.ReplaceAfter = replaceAfter;
+                BrakAfter = brakAfter;
+                ReplaceAfter = replaceAfter;
                 if (rep == null)
                 {
-                    this.SearchBytes = this.TryParse(se);
-                    this.ReplaceImmediately = false;
-                    this._valid = true;
+                    SearchBytes = TryParse(se);
+                    ReplaceImmediately = false;
+                    _valid = true;
                 }
                 else
                 {
-                    this.SearchBytes = this.TryParse(se);
-                    this.ReplaceBytes = this.TryParse(rep);
-                    this.ReplaceImmediately = true;
-                    this._valid = true;
+                    SearchBytes = TryParse(se);
+                    ReplaceBytes = TryParse(rep);
+                    ReplaceImmediately = true;
+                    _valid = true;
                 }
             }
 
-            private Patcher.Pattern.UniversalByte[] TryParse(string st)
+            public bool ValidPattern
             {
-                StringBuilder stringBuilder = new StringBuilder();
-                foreach (char ch in st)
+                get
                 {
-                    if ((int)ch > 32 && (int)ch < (int)sbyte.MaxValue)
-                        stringBuilder.Append(ch);
+                    if (BrakAfter > 0U && BrakAfter - ReplaceAfter < 1U)
+                        return false;
+                    return _valid;
                 }
-                string upper = stringBuilder.ToString().ToUpper();
+            }
+
+            public bool ReplaceImmediately { get; }
+
+            private UniversalByte[] TryParse(string st)
+            {
+                var stringBuilder = new StringBuilder();
+                foreach (var ch in st)
+                    if (ch > 32 && ch < sbyte.MaxValue)
+                        stringBuilder.Append(ch);
+                var upper = stringBuilder.ToString().ToUpper();
                 if (upper.Length % 2 != 0)
                     throw new Exception("String of byte must be power of two.");
-                bool flag = false;
-                Patcher.Pattern.UniversalByte[] universalByteArray = new Patcher.Pattern.UniversalByte[upper.Length / 2];
-                int index = 0;
-                int startIndex = 0;
+                var flag = false;
+                var universalByteArray = new UniversalByte[upper.Length / 2];
+                var index = 0;
+                var startIndex = 0;
                 while (startIndex < upper.Length)
                 {
-                    string s = upper.Substring(startIndex, 2);
+                    var s = upper.Substring(startIndex, 2);
                     if (s == "??")
                     {
-                        universalByteArray[index].Act = Patcher.Pattern.UniversalByte.Action.Skip;
+                        universalByteArray[index].Act = UniversalByte.Action.Skip;
                     }
                     else
                     {
-                        universalByteArray[index].Act = Patcher.Pattern.UniversalByte.Action.Normal;
+                        universalByteArray[index].Act = UniversalByte.Action.Normal;
                         universalByteArray[index].B = byte.Parse(s, NumberStyles.HexNumber);
                         flag = true;
                     }
@@ -447,13 +440,13 @@ namespace UnityPatch
 
             public struct UniversalByte
             {
-                public Patcher.Pattern.UniversalByte.Action Act;
+                public Action Act;
                 public byte B;
 
                 public enum Action
                 {
                     Skip,
-                    Normal,
+                    Normal
                 }
             }
         }
