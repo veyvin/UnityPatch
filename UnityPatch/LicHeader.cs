@@ -141,21 +141,21 @@ namespace UnityPatch
 
         public class LicSettings
         {
+            public bool Nin = true;
+            public bool PlayStation = true;
+            public bool Team = true;
+            public int Type = 1;
+            public bool Wii = true;
+            public bool Xbox = true;
             public int Android;
             public int Blackberry;
             public bool Educt;
             public int Flash;
             public int IPhone;
-            public bool Nin = true;
             public bool NRelease;
-            public bool PlayStation = true;
             public int SamsungTv;
-            public bool Team = true;
             public int Tizen;
-            public int Type = 1;
-            public bool Wii = true;
             public int WinStore;
-            public bool Xbox = true;
         }
     }
 }
